@@ -1,48 +1,39 @@
-import { createContext, useState } from "react";
-import type { ReactNode } from "react";
+import { createContext, useState} from "react";
+import type {ReactNode} from "react";
 
-type CreateVaultContextType = {
-  vaultId: number;
-  vaultName: string;
+export type Vault = {
+  id: number;
+  name: string;
   targetAmount: number;
   duration: number;
   progress: number;
   startDate: Date;
-  setStartDate: (date: Date) => void;
-  setVaultId: (id: number) => void;
-  setVaultName: (name: string) => void;
-  setTargetAmount: (amount: number) => void;
-  setDuration: (duration: number) => void;
-  setProgress: (progress: number) => void;
+};
+
+type CreateVaultContextType = {
+  vaults: Vault[];
+  addVault: (vault: Vault) => void;
+  updateVaultProgress: (id: number, progress: number) => void;
 };
 
 export const CreateVaultContext = createContext<CreateVaultContextType | null>(null);
 
 export const CreateVaultProvider = ({ children }: { children: ReactNode }) => {
-  const [vaultId, setVaultId] = useState<number>(Date.now());
-  const [vaultName, setVaultName] = useState("");
-  const [targetAmount, setTargetAmount] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [vaults, setVaults] = useState<Vault[]>([]);
+
+ 
+  const addVault = (vault: Vault) => {
+    setVaults((prev) => [...prev, vault]);
+  };
+
+  const updateVaultProgress = (id: number, progress: number) => {
+    setVaults((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, progress } : v))
+    );
+  };
 
   return (
-    <CreateVaultContext.Provider
-      value={{
-        vaultId,
-        vaultName,
-        targetAmount,
-        duration,
-        progress,
-        startDate,
-        setStartDate,
-        setVaultId,
-        setVaultName,
-        setTargetAmount,
-        setDuration,
-        setProgress,
-      }}
-    >
+    <CreateVaultContext.Provider value={{ vaults, addVault, updateVaultProgress }}>
       {children}
     </CreateVaultContext.Provider>
   );

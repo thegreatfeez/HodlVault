@@ -25,15 +25,7 @@ export default function CreateVault() {
   const [targetAmount, setTargetAmount] = useState<string>("");
   const [duration, setDuration] = useState(0);
 
-  
-
-  const {
-    setVaultName: saveVaultName,
-    setTargetAmount: saveTargetAmount,
-    setDuration: saveDuration,
-    setStartDate: saveStartDate,
-   
-  } = context;
+  const { addVault } = context;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,18 +36,20 @@ export default function CreateVault() {
       return;
     }
 
-    console.log("Final Vault Data:", vaultName, targetAmount, duration);
+    const newVault = {
+      id: Date.now(),
+      name: vaultName,
+      targetAmount: Number(targetAmount),
+      duration,
+      progress: 0,
+      startDate: new Date(),
+    };
 
-    saveVaultName(vaultName);
-    saveTargetAmount(Number(targetAmount));
-    saveDuration(duration);
-    saveStartDate(new Date());
-   
+    addVault(newVault);
 
     setVaultName("");
     setTargetAmount("");
     setDuration(0);
-    
 
     setSuccessMessage("Vault Created Successfully!");
     setShowSuccess(true);
@@ -63,7 +57,6 @@ export default function CreateVault() {
 
   return (
     <section className="min-h-screen flex flex-col items-center justify-center bg-[#0d141c] text-white px-6 relative">
-     
       {showError && (
         <ErrorAlert
           onClose={() => setShowError(false)}
@@ -90,9 +83,7 @@ export default function CreateVault() {
 
         <form className="space-y-6">
           <div>
-            <label className="block text-gray-300 text-sm mb-2">
-              Vault Name
-            </label>
+            <label className="block text-gray-300 text-sm mb-2">Vault Name</label>
             <input
               type="text"
               value={vaultName}

@@ -1,29 +1,10 @@
 import { Link } from "react-router-dom";
-import { useContext} from "react";
+import { useContext } from "react";
 import { CreateVaultContext } from "../contexts/createVaultContext";
 
 const VaultDashboard = () => {
-  const context = useContext(CreateVaultContext)
-
-const vaultName = context?.vaultName;
-const targetAmount = context?.targetAmount;
-const duration = context?.duration;
-
-if (vaultName && targetAmount && targetAmount > 0 && duration && duration > 0) {
-  console.log("Your vault:", { vaultName, targetAmount, duration });
-}
-
-const vaults = [];
-if (vaultName && targetAmount && duration) {
-  vaults.push({
-    id: Date.now(),
-    name: vaultName,
-    progress: 0,
-    current: "0 ETH",
-    goal: `${targetAmount} ETH`,
-    time: `${duration} days`
-  });
-}
+  const context = useContext(CreateVaultContext);
+  const vaults = context?.vaults || [];
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white p-10">
@@ -64,9 +45,9 @@ if (vaultName && targetAmount && duration) {
                 </tr>
               </thead>
               <tbody>
-                {vaults.map((vault, index) => (
+                {vaults.map((vault) => (
                   <tr
-                    key={index}
+                    key={vault.id}
                     className="border-b border-gray-800 hover:bg-[#1c2128] transition"
                   >
                     <td className="px-6 py-4">{vault.name}</td>
@@ -81,13 +62,11 @@ if (vaultName && targetAmount && duration) {
                         <span className="text-gray-300 text-sm">{vault.progress}%</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-300">{vault.current}</td>
-                    <td className="px-6 py-4 text-gray-300">{vault.goal}</td>
-                    <td className="px-6 py-4 text-gray-300">{vault.time}</td>
+                    <td className="px-6 py-4 text-gray-300">0 ETH</td>
+                    <td className="px-6 py-4 text-gray-300">{vault.targetAmount} ETH</td>
+                    <td className="px-6 py-4 text-gray-300">{vault.duration} days</td>
                     <td className="px-6 py-4 text-blue-400 cursor-pointer hover:underline">
-                      <Link to={`/vault/${vault.id}`}>
-                      View Details
-                      </Link>
+                      <Link to={`/vault/${vault.id}`}>View Details</Link>
                     </td>
                   </tr>
                 ))}
