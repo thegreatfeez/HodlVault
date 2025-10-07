@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import CreateVault from "./Pages/CreateVault";
 import Hero from "./Pages/Hero";
 import { CreateVaultProvider } from "./contexts/createVaultContext";
+import VaultDashboard from "./Pages/VaultDashboard"
 
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
       <Routes>
         <Route index element={<Hero/>}/>
         <Route path="/createvault" element={<CreateVault />} />
+        <Route path="/vaultdashboard" element={<VaultDashboard />} />
       </Routes>
     </BrowserRouter>
     </CreateVaultProvider>

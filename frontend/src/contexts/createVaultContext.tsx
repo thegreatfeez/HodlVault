@@ -1,4 +1,4 @@
-import { createContext, useState, useContext} from "react";
+import { createContext, useState} from "react";
 import type { ReactNode } from "react";
 
 type CreateVaultContextType = {
@@ -10,7 +10,8 @@ type CreateVaultContextType = {
     setDuration:(duration:number) => void 
 }
 
-const CreateVaultContext = createContext<CreateVaultContextType | null>(null);
+export const CreateVaultContext = createContext<CreateVaultContextType | null>(null);
+
 export const CreateVaultProvider = ({ children }: { children: ReactNode }) => {
   const [vaultName, setVaultName] = useState("");
   const [targetAmount, setTargetAmount] = useState(0);
@@ -31,12 +32,4 @@ export const CreateVaultProvider = ({ children }: { children: ReactNode }) => {
     </CreateVaultContext.Provider>
   );
 };
-
-export const useCreateVault = () => {
-    const context  = useContext(CreateVaultContext);
-    if(!context) {
-        throw new Error("useCreateVault must be used within a CreateVaultProvider");
-    }
-    return context;
-}
 
