@@ -17,7 +17,7 @@ export default function Header() {
   
         {!isHeroPage && (
         <nav className="hidden md:flex space-x-6 text-sm text-gray-300">
-          <Link to="/dashboard" className="hover:text-white transition-colors">
+          <Link to="/vaultdashboard" className="hover:text-white transition-colors">
             Dashboard
           </Link>
           <Link to="/createvault" className="hover:text-white transition-colors">
