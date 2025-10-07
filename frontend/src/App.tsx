@@ -4,6 +4,7 @@ import CreateVault from "./Pages/CreateVault";
 import Hero from "./Pages/Hero";
 import { CreateVaultProvider } from "./contexts/createVaultContext";
 import VaultDashboard from "./Pages/VaultDashboard"
+import VaultDetails from "./Pages/VaultDetails";
 
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
         <Route index element={<Hero/>}/>
         <Route path="/createvault" element={<CreateVault />} />
         <Route path="/vaultdashboard" element={<VaultDashboard />} />
+        <Route path="/vault/:id" element={<VaultDetails />} />
       </Routes>
     </BrowserRouter>
     </CreateVaultProvider>
