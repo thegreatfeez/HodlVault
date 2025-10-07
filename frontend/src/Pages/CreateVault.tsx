@@ -25,10 +25,14 @@ export default function CreateVault() {
   const [targetAmount, setTargetAmount] = useState<string>("");
   const [duration, setDuration] = useState(0);
 
+  
+
   const {
     setVaultName: saveVaultName,
     setTargetAmount: saveTargetAmount,
     setDuration: saveDuration,
+    setStartDate: saveStartDate,
+   
   } = context;
 
   function handleSubmit(e: React.FormEvent) {
@@ -45,10 +49,13 @@ export default function CreateVault() {
     saveVaultName(vaultName);
     saveTargetAmount(Number(targetAmount));
     saveDuration(duration);
+    saveStartDate(new Date());
+   
 
     setVaultName("");
     setTargetAmount("");
     setDuration(0);
+    
 
     setSuccessMessage("Vault Created Successfully!");
     setShowSuccess(true);
