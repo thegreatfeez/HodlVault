@@ -1,10 +1,21 @@
-import React from 'react';
+import { BrowserRouter, Routes, Route} from "react-router-dom"
+import Header from "./components/Header";
+import CreateVault from "./Pages/CreateVault";
+import Hero from "./Pages/Hero";
+import { CreateVaultProvider } from "./contexts/createVaultContext";
+
 
 function App() {
   return (
-    <h1 className="text-3xl font-bold underline text-center text-blue-600 mt-10">
-      Hello world!
-    </h1>
+    <CreateVaultProvider>
+    <BrowserRouter>
+      <Header />
+      <Routes>
+        <Route index element={<Hero/>}/>
+        <Route path="/createvault" element={<CreateVault />} />
+      </Routes>
+    </BrowserRouter>
+    </CreateVaultProvider>
   );
 }
 
