@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useContext } from "react";
 import { CreateVaultContext } from "../contexts/createVaultContext";
+import { useCountdown, calculateEndDate } from '../hooks/date';
 
 const VaultDashboard = () => {
   const context = useContext(CreateVaultContext);
@@ -45,31 +46,43 @@ const VaultDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {vaults.map((vault) => (
-                  <tr
-                    key={vault.id}
-                    className="border-b border-gray-800 hover:bg-[#1c2128] transition"
-                  >
-                    <td className="px-6 py-4">{vault.name}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-40 bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                          <div
-                            className="bg-blue-500 h-2.5"
-                            style={{ width: `${vault.progress}%` }}
-                          ></div>
+                {vaults.map((vault) => {
+                  const progress =
+                    vault.targetAmount && vault.targetAmount > 0 && vault.totalSaved !== undefined
+                      ? (vault.totalSaved / vault.targetAmount) * 100
+                      : 0;
+
+                  const endDate = calculateEndDate(vault.startDate, vault.duration);
+                  const now = new Date();
+                  const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                  const timeDisplay = daysRemaining > 0 ? `${daysRemaining} day(s)` : "Completed";
+
+                  return (
+                    <tr
+                      key={vault.id}
+                      className="border-b border-gray-800 hover:bg-[#1c2128] transition"
+                    >
+                      <td className="px-6 py-4">{vault.name}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-40 bg-gray-700 rounded-full h-2.5 overflow-hidden">
+                            <div
+                              className="bg-blue-500 h-2.5"
+                              style={{ width: `${progress}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-gray-300 text-sm">{progress.toFixed(1)}%</span>
                         </div>
-                        <span className="text-gray-300 text-sm">{vault.progress}%</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-300">0 ETH</td>
-                    <td className="px-6 py-4 text-gray-300">{vault.targetAmount} ETH</td>
-                    <td className="px-6 py-4 text-gray-300">{vault.duration} days</td>
-                    <td className="px-6 py-4 text-blue-400 cursor-pointer hover:underline">
-                      <Link to={`/vault/${vault.id}`}>View Details</Link>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 text-gray-300">{vault.totalSaved ?? 0} ETH</td>
+                      <td className="px-6 py-4 text-gray-300">{vault.targetAmount ?? 0} ETH</td>
+                      <td className="px-6 py-4 text-gray-300">{timeDisplay ?? 0}</td>
+                      <td className="px-6 py-4 text-blue-400 cursor-pointer hover:underline">
+                        <Link to={`/vault/${vault.id}`}>View Details</Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -7,13 +7,13 @@ const VaultDetails = () => {
   const context = useContext(CreateVaultContext);
   const { id } = useParams<{ id: string }>();
   const vault = context?.vaults.find(v => v.id === Number(id));
+  const updateVaultTotalSaved = context?.updateVaultTotalSaved;
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [amount, setAmount] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
-  const [date] = useState(new Date());
   const [transactionId, setTransactionId] = useState(1);
-  const [totalSaved, setTotalSaved] = useState(0);
+  const [totalSaved, setTotalSaved] = useState(vault?.totalSaved || 0);
 
   const savingsGoal = vault?.targetAmount || 0;
   const progressPercentage = savingsGoal > 0 ? (totalSaved / savingsGoal) * 100 : 0;
@@ -44,7 +44,14 @@ const VaultDetails = () => {
 
     setTransactions(prev => [...prev, newTransaction]);
     setTransactionId(prev => prev + 1);
-    setTotalSaved(prev => prev + ethAmount);
+
+    const newTotal = totalSaved + ethAmount;
+    setTotalSaved(newTotal);
+
+    if (updateVaultTotalSaved && vault) {
+      updateVaultTotalSaved(vault.id, newTotal);
+    }
+
     setAmount('');
     setIsCompleted(true);
   }

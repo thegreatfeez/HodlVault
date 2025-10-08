@@ -43,6 +43,7 @@ export default function CreateVault() {
       duration,
       progress: 0,
       startDate: new Date(),
+      totalSaved: 0
     };
 
     addVault(newVault);
