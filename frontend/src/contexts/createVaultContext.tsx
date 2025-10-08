@@ -8,12 +8,14 @@ export type Vault = {
   duration: number;
   progress: number;
   startDate: Date;
+  totalSaved?: number
 };
 
 type CreateVaultContextType = {
   vaults: Vault[];
   addVault: (vault: Vault) => void;
   updateVaultProgress: (id: number, progress: number) => void;
+  updateVaultTotalSaved: (id: number, totalSaved: number) => void;
 };
 
 export const CreateVaultContext = createContext<CreateVaultContextType | null>(null);
@@ -32,8 +34,14 @@ export const CreateVaultProvider = ({ children }: { children: ReactNode }) => {
     );
   };
 
+  const updateVaultTotalSaved = (id: number, totalSaved: number) => {
+    setVaults((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, totalSaved } : v))
+    );
+  }
+
   return (
-    <CreateVaultContext.Provider value={{ vaults, addVault, updateVaultProgress }}>
+    <CreateVaultContext.Provider value={{ vaults, addVault, updateVaultProgress, updateVaultTotalSaved }}>
       {children}
     </CreateVaultContext.Provider>
   );
