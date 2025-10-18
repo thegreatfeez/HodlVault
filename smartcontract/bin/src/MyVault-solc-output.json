@@ -2,7 +2,7 @@
     "contracts": {
         "/Users/thegreatfeez/Documents/CODING/Cyfrin-Solidity/HoldVault/smartcontract/src/MyVault.sol": {
             "MyVault": {
-                "abi": [
+                "": [
                     {
                         "anonymous": false,
                         "inputs": [

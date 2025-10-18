@@ -2,20 +2,20 @@
 pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
-import {MyVault} from "../src/MyVault.sol";
+import {MyVaultV2} from "../src/MyVault.sol";
 
 contract DeployMyVault is Script {
-    function run() external returns (MyVault) {
+    function run() external returns (MyVaultV2) {
         address deployer = vm.envAddress("DEPLOYER_ADDRESS");
 
         vm.startBroadcast(deployer);
-        MyVault myVault = new MyVault();
+        MyVaultV2 myVaultV2 = new MyVaultV2();
 
-        console.log("MyVault deployed to:", address(myVault));
+        console.log("MyVault deployed to:", address(myVaultV2));
         console.log("Deployed by:", deployer);
 
         vm.stopBroadcast();
 
-        return myVault;
+        return myVaultV2;
     }
 }
