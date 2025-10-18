@@ -1,11 +1,19 @@
 import { Link } from "react-router-dom";
-import { useContext } from "react";
-import { CreateVaultContext } from "../contexts/createVaultContext";
-import { useCountdown, calculateEndDate } from '../hooks/date';
+import { useUserVaults } from "../hooks/useContract";
 
 const VaultDashboard = () => {
-  const context = useContext(CreateVaultContext);
-  const vaults = context?.vaults || [];
+  const { vaults, isLoading } = useUserVaults();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] text-white p-10 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading your vaults...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white p-10">
@@ -38,6 +46,7 @@ const VaultDashboard = () => {
               <thead className="border-b border-gray-700 text-gray-400 text-sm">
                 <tr>
                   <th className="px-6 py-4 font-medium">VAULT NAME</th>
+                  <th className="px-6 py-4 font-medium">STATUS</th>
                   <th className="px-6 py-4 font-medium">PROGRESS</th>
                   <th className="px-6 py-4 font-medium">CURRENT ETH</th>
                   <th className="px-6 py-4 font-medium">GOAL</th>
@@ -47,36 +56,80 @@ const VaultDashboard = () => {
               </thead>
               <tbody>
                 {vaults.map((vault) => {
-                  const progress =
-                    vault.targetAmount && vault.targetAmount > 0 && vault.totalSaved !== undefined
-                      ? (vault.totalSaved / vault.targetAmount) * 100
-                      : 0;
+                  const goalAmount = Number(vault.goalAmount);
+                  const depositedAmount = Number(vault.depositedAmount);
+                  const progress = goalAmount > 0 ? (depositedAmount / goalAmount) * 100 : 0;
 
-                  const endDate = calculateEndDate(vault.startDate, vault.duration);
+                  const unlockDate = new Date(vault.unlockTime * 1000);
                   const now = new Date();
-                  const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                  const timeDisplay = daysRemaining > 0 ? `${daysRemaining} day(s)` : "Completed";
+                  const timeRemaining = unlockDate.getTime() - now.getTime();
+                  const daysRemaining = Math.max(0, Math.ceil(timeRemaining / (1000 * 60 * 60 * 24)));
+                  const timeUnlocked = timeRemaining <= 0;
+                  
+                  const goalReached = progress >= 100;
+                  const canWithdraw = (goalReached || timeUnlocked) && depositedAmount > 0;
+                  const isCompleted = !vault.isActive && depositedAmount === 0;
+
+                  let statusBadge;
+                  let statusColor;
+
+                  if (isCompleted) {
+                    statusBadge = "Completed";
+                    statusColor = "bg-gray-500/20 text-gray-400 border-gray-500/30";
+                  } else if (!vault.isActive) {
+                    statusBadge = "Inactive";
+                    statusColor = "bg-red-500/20 text-red-400 border-red-500/30";
+                  } else if (canWithdraw) {
+                    statusBadge = "Ready";
+                    statusColor = "bg-green-500/20 text-green-400 border-green-500/30";
+                  } else if (goalReached) {
+                    statusBadge = "Goal Met";
+                    statusColor = "bg-green-500/20 text-green-400 border-green-500/30";
+                  } else {
+                    statusBadge = "Active";
+                    statusColor = "bg-blue-500/20 text-blue-400 border-blue-500/30";
+                  }
+
+                  const timeDisplay = timeUnlocked ? "Unlocked" : `${daysRemaining} day(s)`;
 
                   return (
                     <tr
                       key={vault.id}
                       className="border-b border-gray-800 hover:bg-[#1c2128] transition"
                     >
-                      <td className="px-6 py-4">{vault.name}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span>{vault.name}</span>
+                          {goalReached && vault.isActive && (
+                            <span className="text-xs">🎉</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${statusColor}`}>
+                          {statusBadge}
+                        </span>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-40 bg-gray-700 rounded-full h-2.5 overflow-hidden">
+                          <div className="w-32 bg-gray-700 rounded-full h-2.5 overflow-hidden">
                             <div
-                              className="bg-blue-500 h-2.5"
-                              style={{ width: `${progress}%` }}
+                              className={`h-2.5 transition-all ${
+                                goalReached ? 'bg-green-500' : 'bg-blue-500'
+                              }`}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
                             ></div>
                           </div>
                           <span className="text-gray-300 text-sm">{progress.toFixed(1)}%</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-gray-300">{vault.totalSaved ?? 0} ETH</td>
-                      <td className="px-6 py-4 text-gray-300">{vault.targetAmount ?? 0} ETH</td>
-                      <td className="px-6 py-4 text-gray-300">{timeDisplay ?? 0}</td>
+                      <td className="px-6 py-4 text-gray-300">{depositedAmount.toFixed(4)} ETH</td>
+                      <td className="px-6 py-4 text-gray-300">{goalAmount.toFixed(4)} ETH</td>
+                      <td className="px-6 py-4">
+                        <span className={timeUnlocked ? 'text-green-400' : 'text-gray-300'}>
+                          {timeDisplay}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-blue-400 cursor-pointer hover:underline">
                         <Link to={`/vault/${vault.id}`}>View Details</Link>
                       </td>
