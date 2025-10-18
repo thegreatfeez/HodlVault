@@ -51,19 +51,19 @@ contract MyVaultTest is Test {
 
     function testCreateVaultRevertsWithEmptyName() public {
         vm.prank(user1);
-        vm.expectRevert(bytes("Vault name cannot be empty"));
+        vm.expectRevert(MyVaultV2.VaultNameEmpty.selector);
         myVaultV2.createVault("", 5 ether, 10);
     }
 
     function testCreateVaultRevertsWithZeroGoalAmount() public {
         vm.prank(user1);
-        vm.expectRevert(bytes("Goal amount must be greater than zero"));
+        vm.expectRevert(MyVaultV2.GoalAmountZero.selector);
         myVaultV2.createVault("My Vault", 0, 10);
     }
 
     function testCreateVaultRevertsWithZeroLockDuration() public {
         vm.prank(user1);
-        vm.expectRevert(bytes("Lock duration must be greater than zero"));
+        vm.expectRevert(MyVaultV2.LockDurationZero.selector);
         myVaultV2.createVault("My Vault", 5 ether, 0);
     }
 
@@ -83,7 +83,7 @@ contract MyVaultTest is Test {
         myVaultV2.createVault("Savings", 3 ether, 5);
 
         vm.prank(user2);
-        vm.expectRevert(bytes("Deposit amount must be greater than zero"));
+        vm.expectRevert(MyVaultV2.DepositAmountZero.selector);
         myVaultV2.deposit{value: 0}(0);
     }
 
@@ -91,7 +91,7 @@ contract MyVaultTest is Test {
         vm.startPrank(user1);
         myVaultV2.createVault("Small Vault", 2 ether, 10);
         
-        vm.expectRevert(bytes("Deposit exceeds goal amount"));
+        vm.expectRevert(MyVaultV2.DepositExceedsGoal.selector);
         myVaultV2.deposit{value: 3 ether}(0);
         
         vm.stopPrank();
@@ -103,7 +103,7 @@ contract MyVaultTest is Test {
         myVaultV2.deposit{value: 1 ether}(0);
         myVaultV2.withdraw(0);
         
-        vm.expectRevert(bytes("Vault is already completed"));
+        vm.expectRevert(MyVaultV2.VaultAlreadyCompleted.selector);
         myVaultV2.deposit{value: 0.5 ether}(0);
         
         vm.stopPrank();
@@ -154,7 +154,7 @@ contract MyVaultTest is Test {
         myVaultV2.deposit{value: 3 ether}(0);
 
         vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(bytes("Cannot withdraw before unlock time or goal not met"));
+        vm.expectRevert(MyVaultV2.CannotWithdrawYet.selector);
         myVaultV2.withdraw(0);
         
         vm.stopPrank();
@@ -165,7 +165,7 @@ contract MyVaultTest is Test {
         myVaultV2.createVault("Empty Vault", 5 ether, 5);
 
         vm.warp(block.timestamp + 5 days);
-        vm.expectRevert(bytes("No funds to withdraw"));
+        vm.expectRevert(MyVaultV2.NoFundsToWithdraw.selector);
         myVaultV2.withdraw(0);
         
         vm.stopPrank();
@@ -176,7 +176,7 @@ contract MyVaultTest is Test {
         myVaultV2.createVault("Valid Vault", 2 ether, 3);
 
         vm.prank(user1);
-        vm.expectRevert(bytes("Invalid vault ID"));
+        vm.expectRevert(MyVaultV2.InvalidVaultId.selector);
         myVaultV2.withdraw(1);
     }
 
@@ -186,7 +186,7 @@ contract MyVaultTest is Test {
         myVaultV2.deposit{value: 2 ether}(0);
         myVaultV2.withdraw(0);
         
-        vm.expectRevert(bytes("Vault is already completed"));
+        vm.expectRevert(MyVaultV2.VaultAlreadyCompleted.selector);
         myVaultV2.withdraw(0);
         
         vm.stopPrank();
@@ -197,11 +197,11 @@ contract MyVaultTest is Test {
         myVaultV2.createVault("Owner Only", 2 ether, 3);
 
         vm.prank(user2);
-        vm.expectRevert(bytes("Invalid vault ID"));
+        vm.expectRevert(MyVaultV2.InvalidVaultId.selector);
         myVaultV2.deposit{value: 1 ether}(0);
 
         vm.prank(user2);
-        vm.expectRevert(bytes("Invalid vault ID"));
+        vm.expectRevert(MyVaultV2.InvalidVaultId.selector);
         myVaultV2.withdraw(0);
     }
 
@@ -234,50 +234,12 @@ contract MyVaultTest is Test {
         vm.startPrank(user1);
         myVaultV2.createVault("Active Vault", 2 ether, 5);
         
-        vm.expectRevert(bytes("Vault must be completed to reactivate"));
+        vm.expectRevert(MyVaultV2.VaultMustBeCompleted.selector);
         myVaultV2.reactivateVault(0, 3 ether, 7);
         
         vm.stopPrank();
     }
 
-    function testDeleteVaultSuccess() public {
-        vm.startPrank(user1);
-        myVaultV2.createVault("Delete Me", 1 ether, 5);
-        myVaultV2.deposit{value: 1 ether}(0);
-        myVaultV2.withdraw(0);
-        
-        vm.expectEmit(true, true, false, true, address(myVaultV2));
-        emit MyVaultV2.VaultDeleted(user1, 0);
-        
-        myVaultV2.deleteVault(0);
-        
-        (, , uint256 goalAmount, , , , bool isActive, , ) = myVaultV2.userVaults(user1, 0);
-        assertEq(goalAmount, 0);
-        assertFalse(isActive);
-        
-        vm.stopPrank();
-    }
-
-    function testDeleteVaultRevertsIfNotCompleted() public {
-        vm.startPrank(user1);
-        myVaultV2.createVault("Active Vault", 2 ether, 5);
-        
-        vm.expectRevert(bytes("Can only delete completed vaults"));
-        myVaultV2.deleteVault(0);
-        
-        vm.stopPrank();
-    }
-
-    function testDeleteVaultRevertsIfNotEmpty() public {
-        vm.startPrank(user1);
-        myVaultV2.createVault("Has Funds", 2 ether, 5);
-        myVaultV2.deposit{value: 1 ether}(0);
-        
-        vm.expectRevert(bytes("Vault must be empty to delete"));
-        myVaultV2.deleteVault(0);
-        
-        vm.stopPrank();
-    }
 
     function testGetVaultInfoForNonExistentVault() public {
         MyVaultV2.UserDeposit memory vault = myVaultV2.getVaultInfo(user1, 999);
@@ -445,21 +407,21 @@ contract MyVaultTest is Test {
     }
 
     function testGetCompletedVaults() public {
-        vm.startPrank(user1);
-        myVaultV2.createVault("Active", 1 ether, 10);
-        myVaultV2.createVault("Complete 1", 1 ether, 10);
-        myVaultV2.createVault("Complete 2", 2 ether, 10);
+        vm.startPrank(user2);
+        myVaultV2.createVault("To Complete 1", 1 ether, 10);
+        myVaultV2.createVault("Active Vault", 2 ether, 10);
+        myVaultV2.createVault("To Complete 2", 1 ether, 10);
         
-        myVaultV2.deposit{value: 1 ether}(1);
-        myVaultV2.withdraw(1);
+        myVaultV2.deposit{value: 1 ether}(0);
+        myVaultV2.withdraw(0);
         
-        myVaultV2.deposit{value: 2 ether}(2);
+        myVaultV2.deposit{value: 1 ether}(2);
         myVaultV2.withdraw(2);
         vm.stopPrank();
         
-        uint256[] memory completedVaults = myVaultV2.getCompletedVaults(user1);
+        uint256[] memory completedVaults = myVaultV2.getCompletedVaults(user2);
         assertEq(completedVaults.length, 2);
-        assertEq(completedVaults[0], 1);
+        assertEq(completedVaults[0], 0);
         assertEq(completedVaults[1], 2);
-    }
+    }   
 }

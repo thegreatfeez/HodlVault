@@ -2,6 +2,22 @@
 pragma solidity ^0.8.13;
 
 contract MyVaultV2 {
+    // Custom Errors
+    error VaultNameEmpty();
+    error GoalAmountZero();
+    error LockDurationZero();
+    error DepositAmountZero();
+    error InvalidVaultId();
+    error VaultAlreadyCompleted();
+    error VaultNotActive();
+    error GoalAlreadyReached();
+    error DepositExceedsGoal();
+    error CannotWithdrawYet();
+    error NoFundsToWithdraw();
+    error VaultMustBeCompleted();
+    error VaultMustBeEmpty();
+    error TransferFailed();
+
     struct UserDeposit {
         uint256 id;
         string name;
@@ -22,16 +38,15 @@ contract MyVaultV2 {
     event Withdrawn(address indexed user, uint256 indexed vaultId, uint256 amount);
     event VaultCompleted(address indexed user, uint256 indexed vaultId, uint256 totalWithdrawn);
     event VaultReactivated(address indexed user, uint256 indexed vaultId, uint256 newGoalAmount, uint256 newUnlockTime);
-    event VaultDeleted(address indexed user, uint256 indexed vaultId);
 
     function createVault(
         string memory _name,
         uint256 _goalAmount,
         uint256 _lockDurationInDays
     ) external {
-        require(bytes(_name).length > 0, "Vault name cannot be empty");
-        require(_goalAmount > 0, "Goal amount must be greater than zero");
-        require(_lockDurationInDays > 0, "Lock duration must be greater than zero");
+        if (bytes(_name).length == 0) revert VaultNameEmpty();
+        if (_goalAmount == 0) revert GoalAmountZero();
+        if (_lockDurationInDays == 0) revert LockDurationZero();
 
         uint256 unlockTime = block.timestamp + (_lockDurationInDays * 1 days);
         uint256 vaultId = userVaultCount[msg.sender]++;
@@ -52,16 +67,16 @@ contract MyVaultV2 {
     }
 
     function deposit(uint256 vaultId) external payable {
-        require(msg.value > 0, "Deposit amount must be greater than zero");
-        require(vaultId < userVaultCount[msg.sender], "Invalid vault ID");
+        if (msg.value == 0) revert DepositAmountZero();
+        if (vaultId >= userVaultCount[msg.sender]) revert InvalidVaultId();
 
         UserDeposit storage vault = userVaults[msg.sender][vaultId];
-        require(vault.isActive, "Vault is not active");
-        require(!vault.isCompleted, "Vault is already completed");
-        require(vault.depositedAmount < vault.goalAmount, "Goal already reached");
+        if (vault.isCompleted) revert VaultAlreadyCompleted();
+        if (!vault.isActive) revert VaultNotActive();
+        if (vault.depositedAmount >= vault.goalAmount) revert GoalAlreadyReached();
 
         uint256 remainingToGoal = vault.goalAmount - vault.depositedAmount;
-        require(msg.value <= remainingToGoal, "Deposit exceeds goal amount");
+        if (msg.value > remainingToGoal) revert DepositExceedsGoal();
 
         vault.depositedAmount += msg.value;
 
@@ -69,17 +84,16 @@ contract MyVaultV2 {
     }
 
     function withdraw(uint256 vaultId) external {
-        require(vaultId < userVaultCount[msg.sender], "Invalid vault ID");
+        if (vaultId >= userVaultCount[msg.sender]) revert InvalidVaultId();
 
         UserDeposit storage vault = userVaults[msg.sender][vaultId];
 
-        require(vault.isActive, "Vault is not active");
-        require(!vault.isCompleted, "Vault is already completed");
-        require(
-            block.timestamp >= vault.unlockTime || vault.depositedAmount >= vault.goalAmount,
-            "Cannot withdraw before unlock time or goal not met"
-        );
-        require(vault.depositedAmount > 0, "No funds to withdraw");
+        if (vault.isCompleted) revert VaultAlreadyCompleted();
+        if (!vault.isActive) revert VaultNotActive();
+        if (block.timestamp < vault.unlockTime && vault.depositedAmount < vault.goalAmount) {
+            revert CannotWithdrawYet();
+        }
+        if (vault.depositedAmount == 0) revert NoFundsToWithdraw();
 
         uint256 amountToWithdraw = vault.depositedAmount;
         vault.withdrawnAmount = amountToWithdraw;
@@ -92,7 +106,7 @@ contract MyVaultV2 {
         emit VaultCompleted(msg.sender, vaultId, amountToWithdraw);
 
         (bool success, ) = payable(msg.sender).call{value: amountToWithdraw}("");
-        require(success, "Transfer failed");
+        if (!success) revert TransferFailed();
     }
 
     function reactivateVault(
@@ -100,14 +114,14 @@ contract MyVaultV2 {
         uint256 _newGoalAmount,
         uint256 _newLockDurationInDays
     ) external {
-        require(vaultId < userVaultCount[msg.sender], "Invalid vault ID");
+        if (vaultId >= userVaultCount[msg.sender]) revert InvalidVaultId();
 
         UserDeposit storage vault = userVaults[msg.sender][vaultId];
 
-        require(vault.isCompleted, "Vault must be completed to reactivate");
-        require(vault.depositedAmount == 0, "Vault must be empty");
-        require(_newGoalAmount > 0, "Goal amount must be greater than zero");
-        require(_newLockDurationInDays > 0, "Lock duration must be greater than zero");
+        if (!vault.isCompleted) revert VaultMustBeCompleted();
+        if (vault.depositedAmount != 0) revert VaultMustBeEmpty();
+        if (_newGoalAmount == 0) revert GoalAmountZero();
+        if (_newLockDurationInDays == 0) revert LockDurationZero();
 
         vault.goalAmount = _newGoalAmount;
         vault.unlockTime = block.timestamp + (_newLockDurationInDays * 1 days);
@@ -117,19 +131,6 @@ contract MyVaultV2 {
         vault.completedAt = 0;
 
         emit VaultReactivated(msg.sender, vaultId, _newGoalAmount, vault.unlockTime);
-    }
-
-    function deleteVault(uint256 vaultId) external {
-        require(vaultId < userVaultCount[msg.sender], "Invalid vault ID");
-
-        UserDeposit storage vault = userVaults[msg.sender][vaultId];
-
-        require(vault.isCompleted, "Can only delete completed vaults");
-        require(vault.depositedAmount == 0, "Vault must be empty to delete");
-
-        delete userVaults[msg.sender][vaultId];
-
-        emit VaultDeleted(msg.sender, vaultId);
     }
 
     function getVaultInfo(address _user, uint256 _vaultId) external view returns (UserDeposit memory) {
