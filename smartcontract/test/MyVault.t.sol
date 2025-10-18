@@ -20,7 +20,7 @@ contract MyVaultTest is Test {
         vm.prank(user1);
 
         vm.expectEmit(true, true, false, true, address(myVaultV2));
-        emit MyVaultV2.VaultCreated(user1, 0, "Emergency Fund", 5 ether, block.timestamp + 10 days);
+        emit MyVaultV2.VaultCreated(user1, 0, "Emergency Fund", 5 ether, block.timestamp + 10 days, block.timestamp);
 
         myVaultV2.createVault("Emergency Fund", 5 ether, 10);
         
@@ -72,7 +72,7 @@ contract MyVaultTest is Test {
         myVaultV2.createVault("Vacation Fund", 3 ether, 5);
 
         vm.expectEmit(true, true, false, true, address(myVaultV2));
-        emit MyVaultV2.DepositMade(user2, 0, 1 ether, 1 ether);
+        emit MyVaultV2.DepositMade(user2, 0, 1 ether, 1 ether, block.timestamp, 2 ether);
         myVaultV2.deposit{value: 1 ether}(0);
 
         vm.stopPrank();
@@ -129,7 +129,7 @@ contract MyVaultTest is Test {
 
         vm.warp(block.timestamp + 3 days);
         vm.expectEmit(true, true, false, true, address(myVaultV2));
-        emit MyVaultV2.Withdrawn(user1, 0, 4 ether);
+        emit MyVaultV2.Withdrawn(user1, 0, 4 ether, block.timestamp);
 
         uint256 initialBalance = user1.balance;
         myVaultV2.withdraw(0);
@@ -212,7 +212,7 @@ contract MyVaultTest is Test {
         myVaultV2.withdraw(0);
         
         vm.expectEmit(true, true, false, true, address(myVaultV2));
-        emit MyVaultV2.VaultReactivated(user1, 0, 5 ether, block.timestamp + 10 days);
+        emit MyVaultV2.VaultReactivated(user1, 0, 5 ether, block.timestamp + 10 days, block.timestamp);
         
         myVaultV2.reactivateVault(0, 5 ether, 10);
         
@@ -239,7 +239,6 @@ contract MyVaultTest is Test {
         
         vm.stopPrank();
     }
-
 
     function testGetVaultInfoForNonExistentVault() public {
         MyVaultV2.UserDeposit memory vault = myVaultV2.getVaultInfo(user1, 999);
@@ -407,21 +406,21 @@ contract MyVaultTest is Test {
     }
 
     function testGetCompletedVaults() public {
-        vm.startPrank(user2);
-        myVaultV2.createVault("To Complete 1", 1 ether, 10);
-        myVaultV2.createVault("Active Vault", 2 ether, 10);
-        myVaultV2.createVault("To Complete 2", 1 ether, 10);
+        vm.startPrank(user1);
+        myVaultV2.createVault("Active", 1 ether, 10);
+        myVaultV2.createVault("Complete 1", 1 ether, 10);
+        myVaultV2.createVault("Complete 2", 2 ether, 10);
         
-        myVaultV2.deposit{value: 1 ether}(0);
-        myVaultV2.withdraw(0);
+        myVaultV2.deposit{value: 1 ether}(1);
+        myVaultV2.withdraw(1);
         
-        myVaultV2.deposit{value: 1 ether}(2);
+        myVaultV2.deposit{value: 2 ether}(2);
         myVaultV2.withdraw(2);
         vm.stopPrank();
         
-        uint256[] memory completedVaults = myVaultV2.getCompletedVaults(user2);
+        uint256[] memory completedVaults = myVaultV2.getCompletedVaults(user1);
         assertEq(completedVaults.length, 2);
-        assertEq(completedVaults[0], 0);
+        assertEq(completedVaults[0], 1);
         assertEq(completedVaults[1], 2);
-    }   
+    }
 }

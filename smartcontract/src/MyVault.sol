@@ -2,7 +2,6 @@
 pragma solidity ^0.8.13;
 
 contract MyVaultV2 {
-    // Custom Errors
     error VaultNameEmpty();
     error GoalAmountZero();
     error LockDurationZero();
@@ -33,11 +32,45 @@ contract MyVaultV2 {
     mapping(address => mapping(uint256 => UserDeposit)) public userVaults;
     mapping(address => uint256) public userVaultCount;
 
-    event VaultCreated(address indexed user, uint256 indexed vaultId, string name, uint256 goalAmount, uint256 unlockTime);
-    event DepositMade(address indexed user, uint256 indexed vaultId, uint256 amount, uint256 totalSaved);
-    event Withdrawn(address indexed user, uint256 indexed vaultId, uint256 amount);
-    event VaultCompleted(address indexed user, uint256 indexed vaultId, uint256 totalWithdrawn);
-    event VaultReactivated(address indexed user, uint256 indexed vaultId, uint256 newGoalAmount, uint256 newUnlockTime);
+    event VaultCreated(
+        address indexed user,
+        uint256 indexed vaultId,
+        string name,
+        uint256 goalAmount,
+        uint256 unlockTime,
+        uint256 timestamp
+    );
+
+    event DepositMade(
+        address indexed user,
+        uint256 indexed vaultId,
+        uint256 amount,
+        uint256 totalSaved,
+        uint256 timestamp,
+        uint256 remainingToGoal
+    );
+
+    event Withdrawn(
+        address indexed user,
+        uint256 indexed vaultId,
+        uint256 amount,
+        uint256 timestamp
+    );
+
+    event VaultCompleted(
+        address indexed user,
+        uint256 indexed vaultId,
+        uint256 totalWithdrawn,
+        uint256 timestamp
+    );
+
+    event VaultReactivated(
+        address indexed user,
+        uint256 indexed vaultId,
+        uint256 newGoalAmount,
+        uint256 newUnlockTime,
+        uint256 timestamp
+    );
 
     function createVault(
         string memory _name,
@@ -63,7 +96,7 @@ contract MyVaultV2 {
             completedAt: 0
         });
 
-        emit VaultCreated(msg.sender, vaultId, _name, _goalAmount, unlockTime);
+        emit VaultCreated(msg.sender, vaultId, _name, _goalAmount, unlockTime, block.timestamp);
     }
 
     function deposit(uint256 vaultId) external payable {
@@ -80,7 +113,14 @@ contract MyVaultV2 {
 
         vault.depositedAmount += msg.value;
 
-        emit DepositMade(msg.sender, vaultId, msg.value, vault.depositedAmount);
+        emit DepositMade(
+            msg.sender,
+            vaultId,
+            msg.value,
+            vault.depositedAmount,
+            block.timestamp,
+            vault.goalAmount - vault.depositedAmount
+        );
     }
 
     function withdraw(uint256 vaultId) external {
@@ -102,8 +142,8 @@ contract MyVaultV2 {
         vault.isCompleted = true;
         vault.completedAt = block.timestamp;
 
-        emit Withdrawn(msg.sender, vaultId, amountToWithdraw);
-        emit VaultCompleted(msg.sender, vaultId, amountToWithdraw);
+        emit Withdrawn(msg.sender, vaultId, amountToWithdraw, block.timestamp);
+        emit VaultCompleted(msg.sender, vaultId, amountToWithdraw, block.timestamp);
 
         (bool success, ) = payable(msg.sender).call{value: amountToWithdraw}("");
         if (!success) revert TransferFailed();
@@ -130,7 +170,13 @@ contract MyVaultV2 {
         vault.isCompleted = false;
         vault.completedAt = 0;
 
-        emit VaultReactivated(msg.sender, vaultId, _newGoalAmount, vault.unlockTime);
+        emit VaultReactivated(
+            msg.sender,
+            vaultId,
+            _newGoalAmount,
+            vault.unlockTime,
+            block.timestamp
+        );
     }
 
     function getVaultInfo(address _user, uint256 _vaultId) external view returns (UserDeposit memory) {
