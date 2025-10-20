@@ -19,18 +19,16 @@ export function useUserVaultCount() {
   }
 }
 
-function getVaultName(userAddress: string, vaultId: number): string {
-  const key = `vaultNames_${userAddress}`;
-  const names = JSON.parse(localStorage.getItem(key) || "{}");
-  return names[vaultId] || `Vault #${vaultId}`;
-}
-
 type VaultData = {
   id: bigint
+  name: string
   goalAmount: bigint
   unlockTime: bigint
   depositedAmount: bigint
+  withdrawnAmount: bigint
   isActive: boolean
+  isCompleted: boolean
+  completedAt: bigint
 }
 
 export function useUserVaults() {
@@ -57,11 +55,13 @@ export function useUserVaults() {
       
       return {
         id: Number(vaultData.id),
-        name: address ? getVaultName(address, index) : `Vault #${index}`,
+        name: vaultData.name,
         goalAmount: formatEther(vaultData.goalAmount),
         unlockTime: Number(vaultData.unlockTime),
         depositedAmount: formatEther(vaultData.depositedAmount),
         isActive: vaultData.isActive,
+        isCompleted: vaultData.isCompleted,
+        completedAt: Number(vaultData.completedAt),
       }
     }
     return null
@@ -70,5 +70,85 @@ export function useUserVaults() {
   return {
     vaults,
     isLoading,
+  }
+}
+
+export function useActiveAndCompletedVaults() {
+  const { address } = useAccount()
+
+  const { data: activeIds, isLoading: loadingActiveIds } = useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: MyVaultABI,
+    functionName: 'getActiveVaults',
+    args: address ? [address] : undefined,
+  })
+
+  const { data: completedIds, isLoading: loadingCompletedIds } = useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: MyVaultABI,
+    functionName: 'getCompletedVaults',
+    args: address ? [address] : undefined,
+  })
+
+  const allIds = [
+    ...(activeIds || []),
+    ...(completedIds || [])
+  ]
+
+  const contracts = allIds.map(id => ({
+    address: CONTRACT_ADDRESS,
+    abi: MyVaultABI,
+    functionName: 'getVaultInfo',
+    args: address ? [address, id] : undefined,
+  } as const))
+
+  const { data, isLoading: loadingVaults } = useReadContracts({
+    contracts: contracts.length > 0 ? contracts : [],
+  })
+
+  const activeVaults = data?.slice(0, (activeIds || []).length).map((result: any, index: number) => {
+    if (result.status === 'success' && result.result) {
+      const vaultData = result.result as VaultData
+      const vaultId = Number(activeIds![index])
+      
+      return {
+        id: vaultId,
+        name: vaultData.name,
+        goalAmount: formatEther(vaultData.goalAmount),
+        unlockTime: Number(vaultData.unlockTime),
+        depositedAmount: formatEther(vaultData.depositedAmount),
+        withdrawnAmount: formatEther(vaultData.withdrawnAmount),
+        isActive: vaultData.isActive,
+        isCompleted: vaultData.isCompleted,
+        completedAt: Number(vaultData.completedAt),
+      }
+    }
+    return null
+  }).filter((vault): vault is NonNullable<typeof vault> => vault !== null) || []
+
+  const completedVaults = data?.slice((activeIds || []).length).map((result: any, index: number) => {
+    if (result.status === 'success' && result.result) {
+      const vaultData = result.result as VaultData
+      const vaultId = Number(completedIds![index])
+      
+      return {
+        id: vaultId,
+        name: vaultData.name,
+        goalAmount: formatEther(vaultData.goalAmount),
+        unlockTime: Number(vaultData.unlockTime),
+        depositedAmount: formatEther(vaultData.depositedAmount),
+        withdrawnAmount: formatEther(vaultData.withdrawnAmount),
+        isActive: vaultData.isActive,
+        isCompleted: vaultData.isCompleted,
+        completedAt: Number(vaultData.completedAt),
+      }
+    }
+    return null
+  }).filter((vault): vault is NonNullable<typeof vault> => vault !== null) || []
+
+  return {
+    activeVaults,
+    completedVaults,
+    isLoading: loadingActiveIds || loadingCompletedIds || loadingVaults,
   }
 }

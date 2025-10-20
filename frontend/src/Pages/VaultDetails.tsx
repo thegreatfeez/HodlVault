@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useUserVaults } from "../hooks/useContract";
-import { useWriteContract, useAccount, usePublicClient, useWatchContractEvent, useWaitForTransactionReceipt } from 'wagmi';
+import { useWriteContract, useAccount, usePublicClient, useWatchContractEvent, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { MyVaultABI, CONTRACT_ADDRESS } from '../config/Contract';
 import SuccessAlert from '../components/SuccessAlert';
@@ -27,6 +27,13 @@ const VaultDetails = () => {
 
   const vault = vaults.find(v => v.id === Number(id));
 
+  const { data: contractProgress } = useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: MyVaultABI,
+    functionName: 'getProgressPercentage',
+    args: address && vault ? [address, BigInt(vault.id)] : undefined,
+  });
+
   const [amount, setAmount] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTxs, setLoadingTxs] = useState(false);
@@ -35,23 +42,35 @@ const VaultDetails = () => {
   const [showError, setShowError] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [transactionType, setTransactionType] = useState<'deposit' | 'withdraw' | null>(null);
+  const [transactionType, setTransactionType] = useState<'deposit' | 'withdraw' | 'reactivate' | null>(null);
   const hasFetchedRef = useRef(false);
 
+  const [showReactivateModal, setShowReactivateModal] = useState(false);
+  const [newGoalAmount, setNewGoalAmount] = useState('');
+  const [newDuration, setNewDuration] = useState(0);
+
+  const depositedAmount = Number(vault?.depositedAmount || 0);
+  const isWithdrawn = vault?.isCompleted && depositedAmount === 0;
+
   useEffect(() => {
+    // Stop countdown if vault is withdrawn
+    if (isWithdrawn) return;
+
     const interval = setInterval(() => {
       setCurrentTime(Date.now());
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isWithdrawn]);
 
   useEffect(() => {
     if (isConfirmed && transactionType) {
       if (transactionType === 'deposit') {
         setSuccessMessage('Deposit successful! Your vault has been updated.');
-      } else {
+      } else if (transactionType === 'withdraw') {
         setSuccessMessage('Withdrawal successful! ETH has been sent to your wallet.');
+      } else if (transactionType === 'reactivate') {
+        setSuccessMessage('Vault reactivated successfully!');
       }
       setShowSuccess(true);
       setTransactionType(null);
@@ -68,6 +87,10 @@ const VaultDetails = () => {
         ? 'Transaction was rejected.'
         : writeError.message.includes('insufficient funds')
         ? 'Insufficient funds for transaction.'
+        : writeError.message.includes('VaultMustBeCompleted')
+        ? 'Vault must be completed before reactivation.'
+        : writeError.message.includes('VaultMustBeEmpty')
+        ? 'Vault must be empty before reactivation.'
         : 'Transaction failed. Please try again.';
       
       setErrorMessage(message);
@@ -88,7 +111,7 @@ const VaultDetails = () => {
             amount: formatEther(log.args.amount),
             type: 'deposit'
           };
-          setTransactions(prev => [newTx, ...prev].slice(0, 3));
+          setTransactions(prev => [newTx, ...prev].slice(0, 5));
         }
       });
     },
@@ -107,7 +130,7 @@ const VaultDetails = () => {
             amount: formatEther(log.args.amount),
             type: 'withdraw'
           };
-          setTransactions(prev => [newTx, ...prev].slice(0, 3));
+          setTransactions(prev => [newTx, ...prev].slice(0, 5));
         }
       });
     },
@@ -147,7 +170,9 @@ const VaultDetails = () => {
                 { type: 'address', name: 'user', indexed: true },
                 { type: 'uint256', name: 'vaultId', indexed: true },
                 { type: 'uint256', name: 'amount', indexed: false },
-                { type: 'uint256', name: 'totalSaved', indexed: false }
+                { type: 'uint256', name: 'totalSaved', indexed: false },
+                { type: 'uint256', name: 'timestamp', indexed: false },
+                { type: 'uint256', name: 'remainingToGoal', indexed: false }
               ]
             },
             args: {
@@ -165,7 +190,8 @@ const VaultDetails = () => {
               inputs: [
                 { type: 'address', name: 'user', indexed: true },
                 { type: 'uint256', name: 'vaultId', indexed: true },
-                { type: 'uint256', name: 'amount', indexed: false }
+                { type: 'uint256', name: 'amount', indexed: false },
+                { type: 'uint256', name: 'timestamp', indexed: false }
               ]
             },
             args: {
@@ -185,7 +211,7 @@ const VaultDetails = () => {
           return;
         }
 
-        const recentLogs = allLogs.slice(-3).reverse();
+        const recentLogs = allLogs.slice(-5).reverse();
 
         const txs: Transaction[] = await Promise.all(
           recentLogs.map(async (log) => {
@@ -289,6 +315,39 @@ const VaultDetails = () => {
     }
   }
 
+  function handleReactivateSubmit() {
+    if (!newGoalAmount || Number(newGoalAmount) <= 0) {
+      setErrorMessage('Please enter a valid goal amount.');
+      setShowError(true);
+      return;
+    }
+
+    if (newDuration <= 0) {
+      setErrorMessage('Please enter a valid lock duration.');
+      setShowError(true);
+      return;
+    }
+
+    try {
+      const goalAmountInWei = parseEther(newGoalAmount);
+
+      writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: MyVaultABI,
+        functionName: 'reactivateVault',
+        args: [BigInt(vault!.id), goalAmountInWei, BigInt(newDuration)],
+      });
+
+      setTransactionType('reactivate');
+      setShowReactivateModal(false);
+      setNewGoalAmount('');
+      setNewDuration(0);
+    } catch (error) {
+      setErrorMessage('Failed to reactivate vault. Please try again.');
+      setShowError(true);
+    }
+  }
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     return date.toLocaleString('en-US', {
@@ -324,19 +383,20 @@ const VaultDetails = () => {
   }
 
   const goalAmount = Number(vault.goalAmount);
-  const depositedAmount = Number(vault.depositedAmount);
-  const progressPercentage = goalAmount > 0 ? (depositedAmount / goalAmount) * 100 : 0;
+  const progressPercentage = contractProgress ? Number(contractProgress) : (goalAmount > 0 ? (depositedAmount / goalAmount) * 100 : 0);
 
   const unlockDate = new Date(vault.unlockTime * 1000);
   const timeRemaining = unlockDate.getTime() - currentTime;
 
-  const daysRemaining = Math.max(0, Math.floor(timeRemaining / (1000 * 60 * 60 * 24)));
-  const hoursRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
-  const minutesRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60)));
-  const secondsRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60)) / 1000));
+  // Show 0 for all time values when withdrawn
+  const daysRemaining = isWithdrawn ? 0 : Math.max(0, Math.floor(timeRemaining / (1000 * 60 * 60 * 24)));
+  const hoursRemaining = isWithdrawn ? 0 : Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
+  const minutesRemaining = isWithdrawn ? 0 : Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60)));
+  const secondsRemaining = isWithdrawn ? 0 : Math.max(0, Math.floor((timeRemaining % (1000 * 60)) / 1000));
 
   const timeProgress = timeRemaining > 0 ? 0 : 100;
   const canWithdraw = (progressPercentage >= 100 || timeProgress >= 100) && depositedAmount > 0;
+  const canReactivate = vault.isCompleted && depositedAmount === 0;
 
   const circumference = 2 * Math.PI * 45;
   const strokeDashoffset = circumference - (progressPercentage / 100) * circumference;
@@ -360,10 +420,91 @@ const VaultDetails = () => {
         />
       )}
 
+      {showReactivateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800/90 backdrop-blur rounded-2xl border border-slate-700 p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-2">Reactivate Vault</h2>
+            <p className="text-slate-400 mb-6">Set a new goal and duration for this vault.</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-slate-300 text-sm mb-2">New Goal Amount (ETH)</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={newGoalAmount}
+                  onChange={(e) => setNewGoalAmount(e.target.value)}
+                  placeholder="0.5"
+                  disabled={isProcessing}
+                  className="w-full px-4 py-3 rounded-lg bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 text-sm mb-2">New Lock Duration (Days)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newDuration || ""}
+                  onChange={(e) => setNewDuration(Number(e.target.value))}
+                  placeholder="90"
+                  disabled={isProcessing}
+                  className="w-full px-4 py-3 rounded-lg bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowReactivateModal(false);
+                  setNewGoalAmount('');
+                  setNewDuration(0);
+                }}
+                disabled={isProcessing}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white px-4 py-3 rounded-lg transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReactivateSubmit}
+                disabled={isProcessing}
+                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-lg transition disabled:opacity-50 flex items-center justify-center"
+              >
+                {isProcessing && transactionType === 'reactivate' ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {isConfirming ? 'Confirming...' : 'Reactivating...'}
+                  </>
+                ) : (
+                  "Reactivate Vault"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         <div className="mb-12">
-          <h1 className="text-5xl font-bold mb-2">{vault.name}</h1>
-          <p className="text-slate-400 text-lg">Your personal ETH savings dashboard.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-5xl font-bold mb-2">{vault.name}</h1>
+              <p className="text-slate-400 text-lg">Your personal ETH savings dashboard.</p>
+            </div>
+            {canReactivate && (
+              <button
+                onClick={() => setShowReactivateModal(true)}
+                className="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg transition"
+              >
+                🔄 Reactivate Vault
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -391,23 +532,31 @@ const VaultDetails = () => {
                       strokeDasharray={circumference}
                       strokeDashoffset={strokeDashoffset}
                       strokeLinecap="round"
-                      className="text-blue-500 transition-all duration-500"
+                      className={`transition-all duration-500 ${isWithdrawn ? 'text-green-500' : 'text-blue-500'}`}
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-3xl font-bold">{Math.round(progressPercentage)}%</span>
+                    {isWithdrawn ? (
+                      <span className="text-xl font-bold text-green-400">Withdrawn</span>
+                    ) : (
+                      <span className="text-3xl font-bold">{Math.round(progressPercentage)}%</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex-1">
                   <h2 className="text-2xl font-bold mb-3">Vault Status</h2>
                   <p className="text-slate-300 mb-4">
-                    Total Saved: <span className="font-bold text-white">{depositedAmount.toFixed(4)} ETH</span> of {goalAmount.toFixed(4)} ETH goal
+                    Total Saved: <span className={`font-bold ${isWithdrawn ? 'text-slate-500' : 'text-white'}`}>
+                      {isWithdrawn ? '-' : `${depositedAmount.toFixed(4)} ETH`}
+                    </span> of {goalAmount.toFixed(4)} ETH goal
                   </p>
                   <div className="relative h-3 bg-slate-700 rounded-full overflow-hidden">
                     <div
-                      className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-500"
-                      style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                      className={`absolute left-0 top-0 h-full transition-all duration-500 ${
+                        isWithdrawn ? 'bg-green-500' : 'bg-gradient-to-r from-blue-500 to-blue-400'
+                      }`}
+                      style={{ width: isWithdrawn ? '100%' : `${Math.min(progressPercentage, 100)}%` }}
                     />
                   </div>
                 </div>
@@ -415,22 +564,32 @@ const VaultDetails = () => {
             </div>
 
             <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 border border-slate-700/50">
-              <h2 className="text-2xl font-bold mb-6">Time Remaining</h2>
+              <h2 className="text-2xl font-bold mb-6">
+                {isWithdrawn ? 'Time Locked' : 'Time Remaining'}
+              </h2>
               <div className="grid grid-cols-4 gap-4">
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-blue-400 mb-2">{daysRemaining}</div>
+                  <div className={`text-4xl font-bold mb-2 ${isWithdrawn ? 'text-slate-500' : 'text-blue-400'}`}>
+                    {daysRemaining}
+                  </div>
                   <div className="text-slate-400">Days</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-blue-400 mb-2">{hoursRemaining.toString().padStart(2, '0')}</div>
+                  <div className={`text-4xl font-bold mb-2 ${isWithdrawn ? 'text-slate-500' : 'text-blue-400'}`}>
+                    {hoursRemaining.toString().padStart(2, '0')}
+                  </div>
                   <div className="text-slate-400">Hours</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-blue-400 mb-2">{minutesRemaining.toString().padStart(2, '0')}</div>
+                  <div className={`text-4xl font-bold mb-2 ${isWithdrawn ? 'text-slate-500' : 'text-blue-400'}`}>
+                    {minutesRemaining.toString().padStart(2, '0')}
+                  </div>
                   <div className="text-slate-400">Minutes</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-blue-400 mb-2">{secondsRemaining.toString().padStart(2, '0')}</div>
+                  <div className={`text-4xl font-bold mb-2 ${isWithdrawn ? 'text-slate-500' : 'text-blue-400'}`}>
+                    {secondsRemaining.toString().padStart(2, '0')}
+                  </div>
                   <div className="text-slate-400">Seconds</div>
                 </div>
               </div>
@@ -449,7 +608,9 @@ const VaultDetails = () => {
                 </div>
                 <div className="flex justify-between items-center pb-3 border-b border-slate-700">
                   <span className="text-slate-400">Current Balance</span>
-                  <span className="font-semibold text-blue-400">{depositedAmount.toFixed(4)} ETH</span>
+                  <span className={`font-semibold ${isWithdrawn ? 'text-slate-500' : 'text-blue-400'}`}>
+                    {isWithdrawn ? '-' : `${depositedAmount.toFixed(4)} ETH`}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center pb-3 border-b border-slate-700">
                   <span className="text-slate-400">Unlock Date</span>
@@ -457,21 +618,25 @@ const VaultDetails = () => {
                 </div>
                 <div className="flex justify-between items-center pb-3 border-b border-slate-700">
                   <span className="text-slate-400">Status</span>
-                  <span className={`font-semibold ${vault.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                    {vault.isActive ? 'Active' : 'Inactive'}
+                  <span className={`font-semibold ${
+                    isWithdrawn ? 'text-green-400' : 
+                    vault.isActive ? 'text-green-400' : 
+                    vault.isCompleted ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {isWithdrawn ? 'Withdrawn' : vault.isActive ? 'Active' : vault.isCompleted ? 'Completed' : 'Inactive'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">Can Withdraw</span>
-                  <span className={`font-semibold ${canWithdraw ? 'text-green-400' : 'text-yellow-400'}`}>
-                    {canWithdraw ? 'Yes' : 'Not Yet'}
+                  <span className={`font-semibold ${canWithdraw ? 'text-green-400' : isWithdrawn ? 'text-slate-500' : 'text-yellow-400'}`}>
+                    {isWithdrawn ? 'Already Withdrawn' : canWithdraw ? 'Yes' : 'Not Yet'}
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 border border-slate-700/50">
-              <h2 className="text-2xl font-bold mb-6">Recent Transactions (Last 3)</h2>
+              <h2 className="text-2xl font-bold mb-6">Recent Transactions (Last 5)</h2>
               {loadingTxs ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
@@ -507,73 +672,77 @@ const VaultDetails = () => {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 border border-slate-700/50">
-              <h2 className="text-2xl font-bold mb-2">Deposit ETH</h2>
-              <p className="text-slate-400 mb-6">Add funds to your savings vault.</p>
-              
-              <div className="mb-6">
-                <label className="block text-sm text-slate-400 mb-2">Amount (ETH)</label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  step="0.0001"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  disabled={isProcessing}
-                  className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
+            {vault.isActive && !vault.isCompleted && (
+              <>
+                <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 border border-slate-700/50">
+                  <h2 className="text-2xl font-bold mb-2">Deposit ETH</h2>
+                  <p className="text-slate-400 mb-6">Add funds to your savings vault.</p>
+                  
+                  <div className="mb-6">
+                    <label className="block text-sm text-slate-400 mb-2">Amount (ETH)</label>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      step="0.0001"
+                      min="0"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      disabled={isProcessing}
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
 
-              <button 
-                onClick={handleDeposit}
-                disabled={isProcessing}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
-                {isProcessing && transactionType === 'deposit' ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    {isConfirming ? 'Confirming...' : 'Depositing...'}
-                  </>
-                ) : 'Deposit ETH'}
-              </button>
-            </div>
+                  <button 
+                    onClick={handleDeposit}
+                    disabled={isProcessing}
+                    className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                    {isProcessing && transactionType === 'deposit' ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {isConfirming ? 'Confirming...' : 'Depositing...'}
+                      </>
+                    ) : 'Deposit ETH'}
+                  </button>
+                </div>
 
-            <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 border border-slate-700/50">
-              <h2 className="text-2xl font-bold mb-2">Withdraw ETH</h2>
-              <p className="text-slate-400 mb-6">
-                {canWithdraw 
-                  ? `Withdraw ${depositedAmount.toFixed(4)} ETH to your wallet!` 
-                  : 'Withdrawals unlock when goal is met or time expires.'}
-              </p>
+                <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-8 border border-slate-700/50">
+                  <h2 className="text-2xl font-bold mb-2">Withdraw ETH</h2>
+                  <p className="text-slate-400 mb-6">
+                    {canWithdraw 
+                      ? `Withdraw ${depositedAmount.toFixed(4)} ETH to your wallet!` 
+                      : 'Withdrawals unlock when goal is met or time expires.'}
+                  </p>
 
-              <button
-                onClick={handleWithdraw}
-                disabled={!canWithdraw || isProcessing}
-                className={`w-full font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center ${
-                  canWithdraw
-                    ? "bg-green-500 hover:bg-green-600 text-white cursor-pointer disabled:opacity-50"
-                    : "bg-slate-700 text-slate-500 cursor-not-allowed"
-                }`}
-              >
-                {isProcessing && transactionType === 'withdraw' ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    {isConfirming ? 'Confirming...' : 'Withdrawing...'}
-                  </>
-                ) : canWithdraw ? 'Withdraw All' : 'Locked'}
-              </button>
-            </div>
+                  <button
+                    onClick={handleWithdraw}
+                    disabled={!canWithdraw || isProcessing}
+                    className={`w-full font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center ${
+                      canWithdraw
+                        ? "bg-green-500 hover:bg-green-600 text-white cursor-pointer disabled:opacity-50"
+                        : "bg-slate-700 text-slate-500 cursor-not-allowed"
+                    }`}
+                  >
+                    {isProcessing && transactionType === 'withdraw' ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {isConfirming ? 'Confirming...' : 'Withdrawing...'}
+                      </>
+                    ) : canWithdraw ? 'Withdraw All' : 'Locked'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default VaultDetails;
