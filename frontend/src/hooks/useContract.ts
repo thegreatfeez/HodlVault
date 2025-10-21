@@ -49,7 +49,7 @@ export function useUserVaults() {
     contracts: contracts.length > 0 ? contracts : [],
   })
 
-  const vaults = data?.map((result: any, index: number) => {
+  const vaults = data?.map((result: any) => {
     if (result.status === 'success' && result.result) {
       const vaultData = result.result as VaultData
       
